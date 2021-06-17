@@ -558,6 +558,38 @@ def plot_train_loss(model_name, path):
     plt.xlabel('epoch')
     plt.legend()
     plt.show()
+    
+#czemu nie widać podpisów???
+def plot_k_model_outputs_with_loss(k=3, loss=nn.MSELoss(reduction='mean'), fig_x=20, fig_y=10):
+    img_list = os.listdir("result_Sony/final")
+    img_list.sort()
+    model_path = "result_Sony/final/"
+    short_img = 'dataset/Sony/short/'
+    fig, axes = plt.subplots(nrows=k, ncols=5, figsize=(fig_x, fig_y))
+    [axi.set_axis_off() for axi in axes.ravel()]
+    axes[0][0].title.set_text('Short exposure')
+    axes[0][1].title.set_text('Long exposure')
+    axes[0][2].title.set_text('Model output')
+    axes[0][3].title.set_text('Scaled output')
+    axes[0][4].title.set_text('Loss between')
+    between_names = ['short vs long', 'model vs long', 'scaled vs long']
+    for i in range(k):
+        loss_values = []
+        name = img_list[i*3][:-10]
+        gt_raw = rawpy.imread(short_img+name+'0.04s.ARW')
+        im = gt_raw.postprocess()
+        axes[i][0].imshow(im)
+        img = plt.imread(model_path+img_list[i*3])
+        loss_values.append(float(loss(torch.tensor(im), torch.tensor(img))))
+        axes[i][1].imshow(img)
+        img2 = plt.imread(model_path+img_list[i*3+1])
+        loss_values.append(float(loss(torch.tensor(img), torch.tensor(img2))))
+        axes[i][2].imshow(img2)
+        img3 = plt.imread(model_path+img_list[i*3+2])
+        axes[i][3].imshow(img3)
+        loss_values.append(float(loss(torch.tensor(img), torch.tensor(img3))))
+        axes[i][4].bar(between_names, loss_values, log=True)
+
 
 #train_sony(model, get_train_names(), 201, 5)
 test_sony(ConvDeconv)
