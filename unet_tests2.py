@@ -440,34 +440,35 @@ def train_sony(model, train_names, num_epoch, batch_size=1, save_every=10, model
             torch.save(model.state_dict(), os.path.join(saved_model_param, 'epoch-{}.pth'.format(epoch)))
         #print('\n')
 
-def test_sony(model_name=U_net):
+def test_sony(model_name=U_net, loss=nn.MSELoss(reduction='mean')):
+    model_loss = []
+    order = []
+    ratio_order = []
     result_dir = './result_Sony/'
     test_names = get_test_names()
     short_ex_img_path = './dataset/Sony/short/'
     long_ex_img_path = './dataset/Sony/long/'
     saved_prev, last_epoch, path_last_epoch = get_last_epoch()
-    print(saved_prev)
     if saved_prev:
         model = model_name()
-        model.load_state_dict(torch.load(saved_model_param + path_last_epoch))
+        model.load_state_dict(torch.load(saved_model_param + path_last_epoch, map_location='cpu'))
         model = model.to(device)
         model.eval()
     for name, param in model.named_parameters():
         if param.requires_grad:
-            #print(name, param.data)
             pass
     short_ex_img = os.listdir(short_ex_img_path)
     long_ex_img = os.listdir(long_ex_img_path)
-    #to jest tak ważna linijka, że ja nie wiem czemu oświeciło mnie dopiero teraz
     with torch.no_grad():
-        for name in test_names[:4]:
+        for name in test_names:
             s_images  = [img for img in short_ex_img if img.startswith(name) and img.endswith('.ARW')]
             l_image = [img for img in long_ex_img if img.startswith(name) and img.endswith('.ARW')][0]
             l_path = long_ex_img_path+l_image
             long_raw = rawpy.imread(l_path)
             long_img = long_raw.postprocess(use_camera_wb=True, half_size=False, no_auto_bright=True, output_bps=16)
             long_img = np.float32(long_img / 65535.0)
-            for img in s_images[:1]:
+            for img in s_images:
+                name_num = img[:8]
                 s_path = short_ex_img_path+img
                 ratio = get_amplification_ratio(s_path, l_path)
                 short_raw = rawpy.imread(s_path)
@@ -477,16 +478,92 @@ def test_sony(model_name=U_net):
                 scale_full = np.float32(im / 65535.0)
                 scale_full = scale_full * np.mean(long_img) / np.mean(scale_full)
                 output = model(short_to_model.to(device))
+                net_loss = loss(torch.unsqueeze(torch.tensor(long_img), 0), output.permute(0, 2, 3, 1))
+                model_loss.append(net_loss)
+                order.append(img)
+                ratio_order.append(ratio)
                 output = torch.clamp(output, min=0.0, max=1.0)
                 output = output.squeeze().cpu().numpy().transpose((1, 2, 0))
-                plt.imshow(output, vmin=0, vmax=1)
                 
                 Image.fromarray(np.floor(np.clip(output * 255, 0, 256)).astype(np.uint8), mode='RGB').save(
-                  result_dir + 'final/%s_00_%d_out.png' % (name, ratio))
-                Image.fromarray(np.floor(np.clip(scale_full * 255, 0, 256)).astype(np.uint8), mode='RGB').save(
-                  result_dir + 'final/%s_00_%d_scale.png' % (name, ratio))
+                  result_dir + 'final/%s_%d_out.png' % (name_num, ratio))
+                Image.fromarray(np.floor(np.clip(scale_full*255, 0, 256)).astype(np.uint8), mode='RGB').save(
+                  result_dir + 'final/%s_%d_scale.png' % (name_num, ratio))
                 Image.fromarray(np.floor(np.clip(long_img * 255, 0, 256)).astype(np.uint8), mode='RGB').save(
-                  result_dir + 'final/%s_00_%d_gt.png' % (name, ratio))
+                  result_dir + 'final/%s_%d_gt.png' % (name_num, ratio))
+    return model_loss, order, ratio_order
+
+
+def plot_min_max_loss(model, metric, min_loss, min_, min_ratio,max_loss, max_, max_ratio, fig_x=20, fig_y=10):
+    model_path = "result_Sony/final/"
+    short_img = 'dataset/Sony/short/'
+    fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(fig_x, fig_y))
+    [axi.set_axis_off() for axi in axes.ravel()]
+    axes[0][0].title.set_text('Short exposure')
+    axes[0][1].title.set_text('Long exposure')
+    axes[0][2].title.set_text('Model output')
+    axes[0][3].title.set_text('Scaled output')
+    name = min_[:9]
+    gt_raw = rawpy.imread(short_img+min_)
+    im = gt_raw.postprocess()
+    axes[0][0].imshow(im)
+    img = plt.imread(model_path+name+min_ratio+'_gt.png')
+    axes[0][1].imshow(img)
+    img = plt.imread(model_path+name+min_ratio+'_out.png')
+    axes[0][2].imshow(img)
+    img = plt.imread(model_path+name+min_ratio+'_scale.png')
+    axes[0][3].imshow(img)
+    
+    name = max_[:9]
+    gt_raw = rawpy.imread(short_img+max_)
+    im = gt_raw.postprocess()
+    axes[1][0].imshow(im)
+    img = plt.imread(model_path+name+max_ratio+'_gt.png')
+    axes[1][1].imshow(img)
+    img = plt.imread(model_path+name+max_ratio+'_out.png')
+    axes[1][2].imshow(img)
+    img = plt.imread(model_path+name+max_ratio+'_scale.png')
+    axes[1][3].imshow(img)
+    plt.figtext(0.5,0.95, 'Minimal loss, model: %s, metric: %s, loss value: %.6f., ratio: %s' %(model, metric, min_loss, min_ratio), ha="center", va="top", fontsize=14, color="r")
+    plt.figtext(0.5,0.5, 'Maximal loss, model: %s, metric: %s, loss value: %.6f, ratio: %s'%(model, metric, max_loss, max_ratio), ha="center", va="top", fontsize=14, color="r")
+
+
+def plot_test_info(model, metric, model_loss, order, ratio_order):
+    x = list(map(float, model_loss))
+    ratio_order = list(map(str, map(int, ratio_order)))
+    plt.hist(x, facecolor='g', alpha=0.75)
+    plt.xlabel(metric)
+    plt.ylabel('number of samples in bin')
+    plt.title('Histogram of loss between short and long exposure image, model: %s' %model)
+    plt.grid(True)
+    plt.show()
+
+    min_loss, min_, min_ratio = min(x), order[x.index(min(x))], str(int(ratio_order[x.index(min(x))]))
+    max_loss, max_, max_ratio = max(x), order[x.index(max(x))], str(int(ratio_order[x.index(max(x))]))
+    plot_min_max_loss(model, metric, min_loss, min_, min_ratio,max_loss, max_, max_ratio)
+
+def plot_train_loss(model_name, path):
+    f = open(path, 'r')
+    epoch = []
+    train_loss = []
+    for line in f:
+        try:
+            epoch.append(int(line.split()[0]))
+            train_loss.append(float(line.split()[1]))
+        except:
+            continue
+    f.close()
+    plt.plot(epoch, train_loss, label='train loss')
+    plt.title(model_name)
+    plt.xlabel('epoch')
+    plt.legend()
+    plt.show()
 
 #train_sony(model, get_train_names(), 201, 5)
 test_sony(ConvDeconv)
+
+'''
+plot_train_loss('U-net', r'C:\Users\kapolak\Documents\GitHub\Hello-Darkness\models/train_loss.txt')
+model_loss, order, ratio_order = test_sony()
+plot_test_info('U-net', 'MSELoss', model_loss, order, ratio_order)
+'''
