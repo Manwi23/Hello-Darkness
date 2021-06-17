@@ -439,8 +439,8 @@ def train_sony(model, train_names, num_epoch, batch_size=1, save_every=10, model
         if epoch%save_every==0:
             torch.save(model.state_dict(), os.path.join(saved_model_param, 'epoch-{}.pth'.format(epoch)))
         #print('\n')
-
-def test_sony(model_name=U_net, loss=nn.MSELoss(reduction='mean')):
+# WAŻNE: przy ładowaniu modelu musiałam dodać pole: MAP_LOCATION, trzeba zmienić przy używaniu gpu
+def test_sony(model_name=U_net, loss=nn.MSELoss(reduction='mean'), locator='cpu'):
     model_loss = []
     order = []
     ratio_order = []
@@ -451,7 +451,7 @@ def test_sony(model_name=U_net, loss=nn.MSELoss(reduction='mean')):
     saved_prev, last_epoch, path_last_epoch = get_last_epoch()
     if saved_prev:
         model = model_name()
-        model.load_state_dict(torch.load(saved_model_param + path_last_epoch, map_location='cpu'))
+        model.load_state_dict(torch.load(saved_model_param + path_last_epoch, map_location=locator))
         model = model.to(device)
         model.eval()
     for name, param in model.named_parameters():
