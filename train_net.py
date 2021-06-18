@@ -8,7 +8,7 @@ import os
 import math
 import numpy as np
 
-def train_sony(model, train_names, saved_model_param, num_epoch, batch_size=1, save_every=10, loss = nn.L1Loss(reduction='mean', loader=Loader())):
+def train_sony(model, train_names, saved_model_param, num_epoch, batch_size=1, save_every=10, loss = nn.L1Loss(reduction='mean'), loader=Loader()):
     learning_rate = 1e-4
     optimizer = optim.Adam(model.parameters(), lr = learning_rate)
     model = model.train()

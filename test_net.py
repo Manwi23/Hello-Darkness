@@ -8,7 +8,7 @@ from image_preprocess_for_net import pack_raw, get_amplification_ratio
 import numpy as np
 import os
 
-def test_sony(device, model_name=U_net, saved_model_param='models/Sony5', loss=nn.MSELoss(reduction='mean'), locator='cpu'):
+def test_sony(device, model_name=U_net, saved_model_param='models/Sony', loss=nn.MSELoss(reduction='mean'), loss_name='MSE', locator='cpu'):
     model_loss = []
     order = []
     ratio_order = []
@@ -16,20 +16,19 @@ def test_sony(device, model_name=U_net, saved_model_param='models/Sony5', loss=n
     test_names = get_test_names()
     short_ex_img_path = './dataset/Sony/short/'
     long_ex_img_path = './dataset/Sony/long/'
-    saved_prev, last_epoch, path_last_epoch = get_last_epoch()
-    if saved_prev:
-        model = model_name()
-        model.load_state_dict(torch.load(saved_model_param + path_last_epoch, map_location=locator))
-        model = model.to(device)
-        model.eval()
+    model = model_name()
+    model.load_state_dict(torch.load(saved_model_param, map_location=locator))
+    model = model.to(device)
+    model.eval()
     for name, param in model.named_parameters():
         if param.requires_grad:
             pass
     short_ex_img = os.listdir(short_ex_img_path)
     long_ex_img = os.listdir(long_ex_img_path)
     with torch.no_grad():
+        test_names = ['10003', '10006', '10011', '10016', '10022', '10030', '10032', '10069', '10106', '10191']
         for name in test_names:
-            s_images  = [img for img in short_ex_img if img.startswith(name) and img.endswith('.ARW')]
+            s_images  = [img for img in short_ex_img if img.startswith(name) and img.endswith('.ARW')][:1]
             l_image = [img for img in long_ex_img if img.startswith(name) and img.endswith('.ARW')][0]
             l_path = long_ex_img_path+l_image
             long_raw = rawpy.imread(l_path)
@@ -54,9 +53,9 @@ def test_sony(device, model_name=U_net, saved_model_param='models/Sony5', loss=n
                 output = output.squeeze().cpu().numpy().transpose((1, 2, 0))
                 
                 Image.fromarray(np.floor(np.clip(output * 255, 0, 256)).astype(np.uint8), mode='RGB').save(
-                  result_dir + 'final/%s_%d_out.png' % (name_num, ratio))
+                  result_dir + 'final/%s_%d_%s_%s_out.png' % (name_num, ratio, model.__class__.__name__, loss_name))
                 Image.fromarray(np.floor(np.clip(scale_full*255, 0, 256)).astype(np.uint8), mode='RGB').save(
-                  result_dir + 'final/%s_%d_scale.png' % (name_num, ratio))
+                  result_dir + 'final/%s_%d_%s_%s_scale.png' % (name_num, ratio, model.__class__.__name__, loss_name))
                 Image.fromarray(np.floor(np.clip(long_img * 255, 0, 256)).astype(np.uint8), mode='RGB').save(
-                  result_dir + 'final/%s_%d_gt.png' % (name_num, ratio))
+                  result_dir + 'final/%s_%d_%s_%s_gt.png' % (name_num, ratio,  model.__class__.__name__, loss_name))
     return model_loss, order, ratio_order
