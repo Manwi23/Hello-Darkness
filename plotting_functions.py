@@ -3,6 +3,7 @@ import rawpy
 import os
 import torch
 from torch import nn
+from statistics import mean
 
 def plot_k_model_outputs(model, metric, k=3, fig_x=20, fig_y=10):
     img_list = os.listdir("result_Sony/final")
@@ -206,3 +207,30 @@ def compare_models_outputs(image_name, fig_x=20, fig_y=10):
     l = float(loss2(torch.tensor(img), torch.tensor(img7)))
     axes[1][3].imshow(img7)
     axes[1][3].title.set_text('U_net_MSE, MSE:  %.6f' %l)
+
+
+def plot_mean_test_loss(metric_name, loss):
+    model_path = "result_Sony/final/"
+    convdeconv, resnet, unet = [], [], []
+    img_list = os.listdir("result_Sony/final")
+    out_list = [x for x in img_list if metric_name in x and 'out' in x]
+    gt_list = [x for x in img_list if metric_name in x and 'gt' in x]
+    out_list.sort()
+    gt_list.sort()
+    for i in range(0, len(out_list), 3):
+        gt1 = plt.imread(model_path+gt_list[i])
+        out1 = plt.imread(model_path+out_list[i])
+        convdeconv.append(float(loss(torch.tensor(gt1), torch.tensor(out1))))
+        gt2 = plt.imread(model_path+gt_list[i+1])
+        out2 = plt.imread(model_path+out_list[i+1])
+        resnet.append(float(loss(torch.tensor(gt2), torch.tensor(out2))))
+        gt3 = plt.imread(model_path+gt_list[i+2])
+        out3 = plt.imread(model_path+out_list[i+2])
+        unet.append(float(loss(torch.tensor(gt3), torch.tensor(out3))))
+    fig = plt.figure()
+    ax = fig.add_axes([0,0,1,1])
+    nets = ['ConvDeconv', 'ResNet', 'Unet']
+    means = [mean(convdeconv), mean(resnet), mean(unet)]
+    ax.bar(nets,means)
+    plt.title('Mean test loss for %s' %metric_name)
+    plt.show()
